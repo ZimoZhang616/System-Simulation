@@ -1,23 +1,25 @@
 from global_def import *
 
+
 # 作业类，表示一个生产任务/工单状态
 # Job状态只能被动更改
 class JobState(enum.Enum):
-    NotExist = 0        # 初始化（位于工厂入口）
-    Queueing = 1        # 工作站队列中等待    <--- By Workstation
-    Transporting = 2    # 运输中   <--- By Workstation
-    Processing = 3      # 加工中   <--- By Machine
-    Halted = 4          # 滞留在机器中（加工完成，未分配机器人）   <--- By Machine
-    Waiting = 5         # 等待运输（已分配机器人）   <--- By Robot
-    Perished = 6        # 完成
+    NotExist = 0  # 初始化（位于工厂入口）
+    Queueing = 1  # 工作站队列中等待    <--- By Workstation
+    Transporting = 2  # 运输中   <--- By Workstation
+    Processing = 3  # 加工中   <--- By Machine
+    Halted = 4  # 滞留在机器中（加工完成，未分配机器人）   <--- By Machine
+    Waiting = 5  # 等待运输（已分配机器人）   <--- By Robot
+    Perished = 6  # 完成
+
 
 class Job:
     def __init__(self, index, job_type):
         self.index = index
-        self.type = job_type    # start from 0
+        self.type = job_type  # start from 0
 
         # Job routing
-        self.routing_list = JOB_ROUTING[self.type]   # 路线列表，如 [3, 1, 2, 5]
+        self.routing_list = JOB_ROUTING[self.type]  # 路线列表，如 [3, 1, 2, 5]
         self.routing_workstation_list = []
 
         # Calculate the job service time (Sample from the gamma distribution)
@@ -37,7 +39,7 @@ class Job:
 
         self.start_time = time.time()
         self.duration = 0
-    
+
     def next_routing(self):
         '''
         当JOB离开当前Station时调用
@@ -82,4 +84,3 @@ def generate_all_jobs(max_job_num, job_arrival_rate, seed=42):
         job_list.append(new_job)
 
     return time_list, job_list
-

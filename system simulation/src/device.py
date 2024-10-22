@@ -2,11 +2,19 @@ from global_def import *
 from job import *
 
 
+# Temp functions:
+def calculate_distance(pos_start, pos_end):
+    """Calculate Euclidean distance between two points (x1, y1) and (x2, y2)."""
+    return (pos_end[0] - pos_start[0],
+            pos_end[1] - pos_start[1],
+            ((pos_end[0] - pos_start[0]) ** 2 + (pos_end[1] - pos_start[1]) ** 2) ** 0.5)
+
+
 class DeviceState(enum.Enum):
-    Idle = 0        # no job to do
-    Busy = 1        # robot moving / machine processing
-    Halted = 2      # loaded, but could not move,  例如：车上有货，但是没地方去；机器生产完成，但是无法卸货
-    Waiting = 3     # loaded, waiting to be unloaded, with tasks assigned
+    Idle = 0  # no job to do
+    Busy = 1  # robot moving / machine processing
+    Halted = 2  # loaded, but could not move,  例如：车上有货，但是没地方去；机器生产完成，但是无法卸货
+    Waiting = 3  # loaded, waiting to be unloaded, with tasks assigned
 
 
 class Device:
@@ -81,7 +89,7 @@ class Machine(Device):
                 self.curr_busy_time >= self.curr_job_time):
             self.state = DeviceState.Halted  # item still in the machine, waiting robot to move out
             self.curr_busy_time = 0
-            self.curr_job.state = JobState.Halted   # <--------------- JobState
+            self.curr_job.state = JobState.Halted  # <--------------- JobState
 
     def push_job(self, job):
         '''
@@ -94,7 +102,7 @@ class Machine(Device):
         if self.state != DeviceState.Idle:
             return RTN_ERR
 
-        job.state = JobState.Processing   # <--------------- JobState
+        job.state = JobState.Processing  # <--------------- JobState
         job.curr_machine = self
 
         self.curr_job = job
@@ -138,6 +146,7 @@ class Machine(Device):
         else:
             return f'{self.name}: Idle', COLOR_YELLOW
 
+
 class Workstation(Device):
     """
     One workstation is composed of several machines
@@ -176,7 +185,7 @@ class Workstation(Device):
         self.time_utilization = np.mean([machine.time_utilization for machine in self.machines])
 
     def push_job(self, job):
-        job.state = JobState.Queueing   # <--------------- JobState
+        job.state = JobState.Queueing  # <--------------- JobState
         job.curr_workstation = self
 
         self.input_queue.append(job)
@@ -220,9 +229,13 @@ class Robot(Device):
     def __init__(self, parent=None, index=0, name='', pos=(0, 0)):
         super().__init__(parent, index, name, pos)
 
-        self.curr_job = None
-        self.target_workstation = None
         self.speed = ROBOT_SPEED
+
+        self.curr_job = None
+        self.pick_up_machine = None  # 收货位置（从machine上收货）
+        self.deliver_workstation = None  # 送货位置（向work station送货）
+        self.target_pos = (0, 0)  # 当前目标
+
         self.distance_travelled_pct = 0
         self.total_distance_travelled = 0
 
@@ -230,37 +243,37 @@ class Robot(Device):
         self.update_time()
 
         if self.state == DeviceState.Idle:
-            pass
+            return
 
-        else:   # in busy state
-            # Move to the target pos
-            dx, dy = self.target_workstation.pos[0] - self.pos[0], self.target_workstation.pos[1] - self.pos[1]
-            dist = math.sqrt(dx**2 + dy**2)
+        # in busy state
+        dx, dy, dist = calculate_distance(self.pos, self.target_pos)
 
-            # update the current pos
-            is_arrived = False
-            if dist <= self.speed * BACKEND_CYCLE_TIME:
-                is_arrived = True
-                self.pos = self.target_workstation.pos  # Snap to workstation position
-                self.distance_travelled_pct = 0
+        # if arrived:
+        if dist <= self.speed * BACKEND_CYCLE_TIME:
+            self.pos = self.target_pos  # Snap to target position
+            self.distance_travelled_pct = 0
+
+            # 空载跑 -> 去收货 -> 继续送货（BUSY）
+            if not self.is_loaded:
+                self.state = DeviceState.Busy
+                self.pick_up_machine.pop_job(self.curr_job)
+                self.curr_job.state = JobState.Transporting  # <--------------- JobState
+                self.is_loaded = True
+
+            # 载货跑 -> 去送货 -> IDLE
             else:
-                distance_travelled = self.speed * BACKEND_CYCLE_TIME
-                travel_fraction = distance_travelled / dist
-                self.pos = (self.pos[0] + dx * travel_fraction, self.pos[1] + dy * travel_fraction)
-                self.total_distance_travelled += distance_travelled
-                self.distance_travelled_pct = min(self.distance_travelled_pct + travel_fraction * 100, 100)  # Cap at 100%
+                self.state = DeviceState.Idle
+                self.pop_job(self.curr_job)
+                self.target_workstation.push_job(self.curr_job)
+                self.is_loaded = False
 
-            # update current state
-            if is_arrived:
-                if self.is_loaded:   # 载货跑 -> 卸货 -> IDLE
-                    self.state = DeviceState.Idle
-                    self.pop_job(self.curr_job)
-                    self.target_workstation.push_job(self.curr_job)
-                    self.is_loaded = False
-                else:   # 空载跑 -> 装货 -> BUSY
-                    self.state = DeviceState.Busy
-                    self.target_workstation.pop_job(self.curr_job)
-                    self.is_loaded = True
+        else:  # not arrived
+            self.state = DeviceState.Busy
+            distance_travelled = self.speed * BACKEND_CYCLE_TIME
+            travel_fraction = distance_travelled / dist
+            self.pos = (self.pos[0] + dx * travel_fraction, self.pos[1] + dy * travel_fraction)
+            self.total_distance_travelled += distance_travelled
+            self.distance_travelled_pct = min(self.distance_travelled_pct + travel_fraction * 100, 100)  # Cap at 100%
 
     def push_job(self, job):
         '''
@@ -277,18 +290,9 @@ class Robot(Device):
         self.state = DeviceState.Busy
         self.curr_busy_time = 0
 
-        self.target_workstation = self.parent.workstations[self.curr_job.curr_routing_index]
-
-        # check if the robot is already at the job position
-        dx, dy = self.curr_job.pos[0] - self.pos[0], self.curr_job.pos[1] - self.pos[1]
-        dist = math.sqrt(dx ** 2 + dy ** 2)
-        if dist <= self.speed * BACKEND_CYCLE_TIME:
-            self.is_loaded = True
-        else:
-            self.is_loaded = False
-
-        self.input_queue.append(job)
-        self.input_queue_len = len(self.input_queue)
+        self.pick_up_machine = job.curr_machine
+        self.deliver_workstation = job.next_workstation
+        self.target_pos = self.pick_up_machine.pos
 
         # record
         self.input_job_count[job.type] += 1
@@ -300,6 +304,11 @@ class Robot(Device):
         self.curr_job = None
         self.state = DeviceState.Idle
         self.curr_busy_time = 0
+
+        self.pick_up_machine = None
+        self.deliver_workstation = None
+        self.target_pos = (0, 0)
+
         self.is_loaded = False
 
         # record
@@ -323,7 +332,6 @@ class Robot(Device):
         # show percentage
         percentage_text = font.render(f'{int(self.distance_travelled_pct)}%', True, COLOR_BLACK)
         screen.blit(percentage_text, (screen_pos[0] - 15, screen_pos[1] - 35))
-
 
 
 class Factory(Device):
@@ -356,14 +364,19 @@ class Factory(Device):
         self.curr_job_index = 0
         self.total_num_jobs = 0
 
+        self.is_job_alive = []
+
     def set_jobs(self, job_times, jobs):
         self.job_times = job_times
         self.jobs = jobs
         for job in self.jobs:
             job.routing_workstation_list = [self.workstations[job.routing_list[i_routine] - 1]
                                             for i_routine in range(len(job.routing_list))]
+            job.next_workstation = job.routing_workstation_list[0]
 
         self.total_num_jobs = len(self.jobs)
+
+        self.is_job_alive = [False for job in self.jobs]
 
     def generate_job(self):
         # 创建新任务并加入初始化列表
@@ -399,7 +412,7 @@ class Factory(Device):
                     for workstation in self.workstations:
                         if workstation.output_queue_len > 0:
                             # Calculate distance between robot and workstation
-                            distance = calculate_distance(robot.pos, workstation.pos)
+                            dx, dy, distance = calculate_distance(robot.pos, workstation.pos)
                             if distance < min_distance:
                                 min_distance = distance
                                 closest_workstation = workstation
@@ -418,7 +431,8 @@ class Factory(Device):
                         # Assign the next job in the queue to the idle machine
                         next_job = workstation.input_queue.pop(0)
                         machine.push_job(next_job)
-                        print(f"Job {next_job.index} assigned to Machine {machine.name} in Workstation {workstation.name}")
+                        print(
+                            f"Job {next_job.index} assigned to Machine {machine.name} in Workstation {workstation.name}")
 
         # Job-oriented policy: Minimize job queueing/waiting time
         elif POLICY_NAME == 'J1':
@@ -440,8 +454,26 @@ class Factory(Device):
                         if robot.state == DeviceState.Idle:
                             robot.target_workstation = longest_queue_workstation
                             robot.state = DeviceState.Busy
-                            print(f"Robot {robot.name} transporting job {longest_waiting_job.index} from {longest_queue_workstation.name}")
+                            print(
+                                f"Robot {robot.name} transporting job {longest_waiting_job.index} from {longest_queue_workstation.name}")
                             break
+
+        elif POLICY_NAME == 'K1':
+            for robot in self.robots:
+                if robot.state == DeviceState.Idle:
+                    stalled_jobs = [self.jobs[i_job]
+                                    for i_job in range(self.total_num_jobs)
+                                    if self.is_job_alive[i_job] is True
+                                    and self.jobs[i_job].state == JobState.Halted]
+                    if len(stalled_jobs) > 0:
+                        temp_job = random.choice(stalled_jobs)
+                        temp_job.state = DeviceState.Waiting
+                        robot.push_job(temp_job)
+
+        elif POLICY_NAME == 'NA':
+            pass
+        else:
+            raise ValueError(f'POLICY_NAME {POLICY_NAME} not recognized')
 
     def update(self):
         self.update_time()
@@ -463,8 +495,11 @@ class Factory(Device):
         self.run_my_policy()
 
     def push_job(self, job):
+        job.state = JobState.Halted
         self.input_queue.append(job)
         self.input_queue_len = len(self.input_queue)
+
+        self.is_job_alive[job.index] = True
 
         # record
         self.input_job_count[job.type] += 1
@@ -472,6 +507,8 @@ class Factory(Device):
         return RTN_OK
 
     def pop_job(self, job=None):
+
+        self.is_job_alive[job.index] = False
 
         # record
         self.output_queue_count[job.type] += 1
@@ -489,8 +526,8 @@ class Factory(Device):
             (f'{self.name}', COLOR_LIGHT_GREY),
             (f'Time: {int(self.total_run_time / 60)} min {int(self.total_run_time % 60):2d} sec', COLOR_LIGHT_BLUE),
             (f'Output: {self.total_output_job}', COLOR_LIGHT_BLUE),
-            (f'Output: {self.total_output_job/self.total_run_time*3600:.1f} /h', COLOR_LIGHT_BLUE),
-            (f'Input: {self.total_input_job/self.total_run_time*3600:.1f} /h', COLOR_LIGHT_BLUE),
+            (f'Output: {self.total_output_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
+            (f'Input: {self.total_input_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
             (f'(In-Out): {self.total_input_job - self.total_output_job}', COLOR_LIGHT_BLUE),
             (f'Queue: {int(self.input_queue_len)}', COLOR_LIGHT_BLUE)
         ]

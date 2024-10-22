@@ -21,7 +21,9 @@ RTN_ERR = -1
 # R1: Robot-oriented, maximize robot utilization
 # M1: Machine-oriented, maximize machine utilization
 # J1: Job-oriented, maximize throughput
-POLICY_NAME = 'R1'
+# K1: random assign to stalled jobs
+# POLICY_NAME = 'K1'
+POLICY_NAME = 'NA'
 
 # Workstation/machine
 NUM_WORKSTATIONS = 5
@@ -93,9 +95,3 @@ COLOR_ORANGE = (255, 165, 0)  # Orange for output and occupied
 # Fonts
 FONT_FAMILY = 'consolas'
 FONT_SIZE = 18
-
-
-# Temp functions:
-def calculate_distance(pos1, pos2):
-    """Calculate Euclidean distance between two points (x1, y1) and (x2, y2)."""
-    return ((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2) ** 0.5
