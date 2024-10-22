@@ -599,15 +599,20 @@ class Factory(Device):
         box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
                                  self.pos[1] + WORLD_HEIGHT))
         side_text = []
-        for i in range(self.total_num_jobs):
-            if i >= 25:
+        i_plot = 0
+        total_alive_job = sum(self.is_job_alive)
+        side_text.append((f'Total alive jobs: {total_alive_job}', COLOR_LIGHT_GREY))
+        for i_job in range(self.total_num_jobs):
+            if i_plot >= 20:
                 break
-            if self.is_job_alive[i]:
-                temp_text = f'{self.jobs[i].name}|'
-                temp_text += f'idx {self.jobs[i].curr_routing_index}|'
-                temp_text += f'{self.jobs[i].routing_list}|'
-                temp_text += f'{self.jobs[i].state}'[9:]
-                temp_text += f' @ {self.jobs[i].curr_workstation.name}'
+            if self.is_job_alive[i_job]:
+                i_plot += 1
+                temp_job = self.jobs[i_job]
+                temp_text = f'{temp_job.name}|'
+                temp_text += f'idx {temp_job.curr_routing_index}|'
+                temp_text += f'{temp_job.routing_list}|'
+                temp_text += f'{temp_job.state}'[9:]
+                temp_text += f' @ {temp_job.curr_workstation.name}'
                 side_text.append((temp_text, COLOR_LIGHT_BLUE))
         draw_text_box(screen, side_text, box_pos,
                       top_center=True, align_center=False, show_box=False,

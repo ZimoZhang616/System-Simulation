@@ -30,11 +30,11 @@ WORKSTATION_POLICY_NAME = 'DEFAULT'
 
 # Workstation/machine
 NUM_WORKSTATIONS = 5
-NUM_MACHINES_WORKSTATION = [3, 5, 3, 4, 2]
+NUM_MACHINES_WORKSTATION = [3, 3, 5, 4, 2]
 WORKSTATION_POS = [(-150, 0), (-150, 150), (0, 150), (150, 150), (150, 0)]  # unit: feet
 
 # Robot
-NUM_ROBOTS = 3
+NUM_ROBOTS = 8
 ROBOT_SPEED = 5     # unit: feet per second
 
 # Job
@@ -55,13 +55,13 @@ JOB_MEAN_TIME = [
 ]
 JOB_PROBABILITY = [0.3, 0.5, 0.2]
 JOB_GENERATE_SEED = 42
-MAX_JOB_NUM = 200
+MAX_JOB_NUM = 300
 
 # Timing
-BACKEND_CYCLE_TIME = 5e-2       # unit: second
-TOTAL_BACKEND_RUN_TIME = 3600     # unit: second
+BACKEND_CYCLE_TIME = 5e-1       # unit: second
+TOTAL_BACKEND_RUN_TIME = 3600*5     # unit: second
 
-BACKEND_SPEED_RATIO = 40      # speed up ratio (仿真加速比率)
+BACKEND_SPEED_RATIO = 400      # speed up ratio (仿真加速比率)
 
 ''' ------------------------------------------------------------------------------- '''
 ''' GUI/Frontend 前端界面 '''
