@@ -27,11 +27,11 @@ class Device:
         self.is_loaded = False  # if the device is loaded with job/item
 
         # timing
-        self.total_run_time = 0  # total time since init
-        self.curr_busy_time = 0  # busy time of current job
-        self.total_idle_time = 0
-        self.total_busy_time = 0
-        self.time_utilization = 0  # total_busy_time / total_run_time
+        self.total_run_time = EPS  # total time since init
+        self.curr_busy_time = EPS  # busy time of current job
+        self.total_idle_time = EPS
+        self.total_busy_time = EPS
+        self.time_utilization = EPS  # total_busy_time / total_run_time
 
         # input queue
         self.input_queue = []
@@ -394,6 +394,9 @@ class Factory(Device):
 
         self.is_job_alive = []
 
+        # pause
+        self.is_paused = False
+
     def set_jobs(self, job_times, jobs):
         '''
         添加预先生成的Job列表，并初始化Job内部参数
@@ -516,6 +519,9 @@ class Factory(Device):
             raise ValueError(f'POLICY_NAME {self.robot_policy} not recognized')
 
     def update(self):
+        if self.is_paused:
+            return
+
         self.update_time()
 
         # 随机产生新的job
