@@ -5,17 +5,19 @@ from global_def import *
 # Job状态只能被动更改
 class JobState(enum.Enum):
     NotExist = 0  # 初始化（位于工厂入口）
-    Queueing = 1  # 工作站队列中等待    <--- By Workstation
-    Transporting = 2  # 运输中   <--- By Workstation
-    Processing = 3  # 加工中   <--- By Machine
-    Halted = 4  # 滞留在机器中（加工完成，未分配机器人）   <--- By Machine
+    Moving = 1  # 运输中   <--- By Workstation
+    Queueing = 2  # 工作站队列中等待    <--- By Workstation
+    Working = 3  # 加工中   <--- By Machine
+    Ready = 4  # 加工结束（滞留在机器中，未分配机器人）   <--- By Machine
     Waiting = 5  # 等待运输（已分配机器人）   <--- By Robot
     Perished = 6  # 完成
 
 
 class Job:
-    def __init__(self, index, job_type):
+    def __init__(self, parent, index, name, job_type):
+        self.parent = parent
         self.index = index
+        self.name = name
         self.type = job_type  # start from 0
 
         # Job routing
@@ -27,18 +29,19 @@ class Job:
                                                   scale=JOB_MEAN_TIME[self.type][i_routine] / JOB_TIME_GAMMA)
                                   for i_routine in range(len(self.routing_list))]
 
+        self.total_service_time = sum(self.service_time_list)
+
         # Current state
         self.state = JobState.NotExist
         self.pos = (0, 0)
 
         self.curr_routing_index = 0  # 当前正在处理的ROUTING索引
         self.curr_workstation = None
-        self.curr_machine = None
         self.next_workstation = None
-        self.next_machine = None
 
-        self.start_time = time.time()
-        self.duration = 0
+        self.start_time = None
+        self.end_time = None
+        self.total_busy_time = None
 
     def next_routing(self):
         '''
@@ -47,11 +50,13 @@ class Job:
         '''
         # self.duration = time.time() - self.start_time
         self.curr_routing_index += 1
-        self.next_workstation = self.routing_workstation_list[self.curr_routing_index]
 
-        # 结束条件
-        # if self.curr_routing_index == len(self.routing_list):
-        #     self.state = JobState.Perished
+        # Proceed job to its next target
+        if self.curr_routing_index == len(self.routing_list):
+            self.next_workstation = self.parent # return to factory
+        else:
+            self.next_workstation = self.routing_workstation_list[self.curr_routing_index]
+
 
 
 def generate_all_jobs(max_job_num, job_arrival_rate, seed=42):
@@ -79,7 +84,8 @@ def generate_all_jobs(max_job_num, job_arrival_rate, seed=42):
             population=range(NUM_JOB_TYPES),  # 任务类型的列表
             weights=JOB_PROBABILITY  # 从job_types中提取生成概率
         )[0]
-        new_job = Job(index=i, job_type=job_type)
+        new_job = Job(parent=None, index=i,
+                      name=f'J{i+1}', job_type=job_type)
         time_list.append(current_time)
         job_list.append(new_job)
 

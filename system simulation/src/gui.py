@@ -9,7 +9,7 @@ class GraphicUserInterface:
         self.factory = factory
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Factory Simulation with Workstations and Robots")
+        pygame.display.set_caption(f"Factory Simulator (Speed x{BACKEND_SPEED_RATIO})")
 
         # Define fonts
         self.font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
@@ -32,7 +32,7 @@ class GraphicUserInterface:
             #     global_cmd_queue.put("START_OPERATION")  # Example command
 
             # Clear screen
-            self.screen.fill(COLOR_WHITE)
+            self.screen.fill(COLOR_LIGHT_GREY)
 
             # update the factory
             self.factory.draw(self.screen)

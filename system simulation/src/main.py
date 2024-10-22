@@ -4,7 +4,7 @@ from gui import *
 import threading
 
 # Global pointer
-g_factory = Factory(name='MyFactory', pos=(0, 0))
+g_factory = Factory(name='Entry', pos=(0, 0))
 g_job_times, g_jobs = generate_all_jobs(max_job_num=MAX_JOB_NUM,
                                         job_arrival_rate=JOB_ARRIVAL_RATE,
                                         seed=JOB_GENERATE_SEED)

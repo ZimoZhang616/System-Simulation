@@ -13,8 +13,6 @@ def calculate_distance(pos_start, pos_end):
 class DeviceState(enum.Enum):
     Idle = 0  # no job to do
     Busy = 1  # robot moving / machine processing
-    Halted = 2  # loaded, but could not move,  例如：车上有货，但是没地方去；机器生产完成，但是无法卸货
-    Waiting = 3  # loaded, waiting to be unloaded, with tasks assigned
 
 
 class Device:
@@ -33,8 +31,6 @@ class Device:
         self.curr_busy_time = 0  # busy time of current job
         self.total_idle_time = 0
         self.total_busy_time = 0
-        self.total_halt_time = 0
-        self.total_wait_time = 0
         self.time_utilization = 0  # total_busy_time / total_run_time
 
         # input queue
@@ -46,7 +42,7 @@ class Device:
         # output queue
         self.output_queue = []
         self.output_queue_len = 0
-        self.output_queue_count = [0 for i_tmp in range(NUM_JOB_TYPES)]  # count of all output jobs
+        self.output_job_count = [0 for i_tmp in range(NUM_JOB_TYPES)]  # count of all output jobs
         self.total_output_job = 0
 
     def update_time(self):  # update the device timing
@@ -55,19 +51,15 @@ class Device:
         if self.state == DeviceState.Busy:
             self.curr_busy_time += BACKEND_CYCLE_TIME
             self.total_busy_time += BACKEND_CYCLE_TIME
-        elif self.state == DeviceState.Halted:
-            self.total_halt_time += BACKEND_CYCLE_TIME
-        elif self.state == DeviceState.Waiting:
-            self.total_wait_time += BACKEND_CYCLE_TIME
         else:
             self.total_idle_time += BACKEND_CYCLE_TIME
 
         self.time_utilization = self.total_busy_time / self.total_run_time if self.total_run_time else 0.0
 
-    def push_job(self, job):
+    def add_job(self, job):
         pass
 
-    def pop_job(self, job=None):
+    def drop_job(self, job):
         pass
 
     def draw(self, screen):  # draw the device on GUI
@@ -87,11 +79,9 @@ class Machine(Device):
         # current job is finished
         if (self.state == DeviceState.Busy and
                 self.curr_busy_time >= self.curr_job_time):
-            self.state = DeviceState.Halted  # item still in the machine, waiting robot to move out
-            self.curr_busy_time = 0
-            self.curr_job.state = JobState.Halted  # <--------------- JobState
+            self.drop_job(self.curr_job)
 
-    def push_job(self, job):
+    def add_job(self, job):
         '''
 
         :param job: the target job
@@ -102,8 +92,7 @@ class Machine(Device):
         if self.state != DeviceState.Idle:
             return RTN_ERR
 
-        job.state = JobState.Processing  # <--------------- JobState
-        job.curr_machine = self
+        job.state = JobState.Working  # <--------------- Edit Job
 
         self.curr_job = job
         self.curr_job_time = job.service_time_list[job.curr_routing_index]
@@ -118,13 +107,12 @@ class Machine(Device):
 
         return RTN_OK
 
-    def pop_job(self, job=None):
-        if self.state != DeviceState.Waiting:
+    def drop_job(self, job):
+        if self.state != DeviceState.Busy:
             return RTN_ERR
 
-        # record
-        self.output_queue_count[self.curr_job.type] += 1
-        self.total_output_job += 1
+        job.state = JobState.Ready  # <--------------- Edit Job
+        job.next_routing()  # <--------------- Edit Job
 
         self.curr_job = None
         self.curr_job_time = 0
@@ -133,16 +121,20 @@ class Machine(Device):
         self.curr_busy_time = 0
         self.is_loaded = False
 
+        # add to parent pool/queue
+        self.parent.output_queue.append(job)
+        self.parent.output_queue_len += 1
+
+        # record
+        self.output_job_count[job.type] += 1
+        self.total_output_job += 1
+
         return RTN_OK
 
     def get_show_text(self):
         if self.state == DeviceState.Busy:
-            percentage_complete = int((self.curr_job_time / self.curr_job_time) * 100)
-            return f'{self.name}: Busy {percentage_complete:2d}%', COLOR_GREEN
-        elif self.state == DeviceState.Halted:
-            return f'{self.name}: Halt', COLOR_RED
-        elif self.state == DeviceState.Waiting:
-            return f'{self.name}: Wait', COLOR_ORANGE
+            percentage_complete = int((self.curr_busy_time / self.curr_job_time) * 100)
+            return f'{self.name}: [{self.curr_job.name}] | {percentage_complete:2d}%', COLOR_GREEN
         else:
             return f'{self.name}: Idle', COLOR_YELLOW
 
@@ -163,16 +155,24 @@ class Workstation(Device):
                                  pos=self.pos)
                          for i_machine in range(self.num_machines)]
 
+        self.workstation_policy = WORKSTATION_POLICY_NAME
+
+    def my_workstation_policy(self):
+        ''' Machine Policy Here '''
+        if self.workstation_policy == 'DEFAULT':
+            # update machine states
+            for machine in self.machines:
+                if machine.state == DeviceState.Idle and self.input_queue_len > 0:
+                    temp_job = self.input_queue.pop(0)
+                    self.input_queue_len = len(self.input_queue)
+                    machine.add_job(temp_job)
+                machine.update()
+
     def update(self):
         self.update_time()
 
-        # update machine states
-        for machine in self.machines:
-            if machine.state == DeviceState.Idle and self.input_queue_len > 0:
-                temp_job = self.input_queue.pop()
-                self.input_queue_len = len(self.input_queue)
-                machine.push_job(temp_job)
-            machine.update()
+        # customized workstation policy
+        self.my_workstation_policy()
 
         # curr state:
         if any(machine.state == DeviceState.Busy for machine in self.machines):
@@ -184,9 +184,10 @@ class Workstation(Device):
         # use mean time of utilization of all machines
         self.time_utilization = np.mean([machine.time_utilization for machine in self.machines])
 
-    def push_job(self, job):
-        job.state = JobState.Queueing  # <--------------- JobState
-        job.curr_workstation = self
+    def add_job(self, job):
+
+        job.state = JobState.Queueing  # <--------------- Edit Job
+        job.curr_workstation = self  # <--------------- Edit Job
 
         self.input_queue.append(job)
         self.input_queue_len = len(self.input_queue)
@@ -196,9 +197,12 @@ class Workstation(Device):
         self.total_input_job += 1
         return RTN_OK
 
-    def pop_job(self, job=None):
+    def drop_job(self, job):
+        self.output_queue.remove(job)
+        self.output_queue_len -= 1
+
         # record
-        self.output_queue_count[job.type] += 1
+        self.output_job_count[job.type] += 1
         self.total_output_job += 1
         return RTN_OK
 
@@ -214,6 +218,7 @@ class Workstation(Device):
 
         # Display the mean busy ratio of the machines in this workstation
         show_text_list.append((f'Time Util:{self.time_utilization * 100:3.0f}%', COLOR_LIGHT_BLUE))
+        show_text_list.append((f'Q_Out: {[temp_job.name for temp_job in self.output_queue]}', COLOR_LIGHT_BLUE))
         show_text_list.append((f'Output: {self.total_output_job}', COLOR_LIGHT_BLUE))
         show_text_list.append((f'Queue: {self.input_queue_len}', COLOR_LIGHT_BLUE))
 
@@ -232,8 +237,8 @@ class Robot(Device):
         self.speed = ROBOT_SPEED
 
         self.curr_job = None
-        self.pick_up_machine = None  # 收货位置（从machine上收货）
-        self.deliver_workstation = None  # 送货位置（向work station送货）
+        self.pick_up_workstation = None  # 收货位置
+        self.deliver_workstation = None  # 送货位置
         self.target_pos = (0, 0)  # 当前目标
 
         self.distance_travelled_pct = 0
@@ -256,15 +261,23 @@ class Robot(Device):
             # 空载跑 -> 去收货 -> 继续送货（BUSY）
             if not self.is_loaded:
                 self.state = DeviceState.Busy
-                self.pick_up_machine.pop_job(self.curr_job)
-                self.curr_job.state = JobState.Transporting  # <--------------- JobState
+                if self.pick_up_workstation == self.parent:
+                    self.parent.input_queue.remove(self.curr_job)
+                    self.parent.input_queue_len -= 1
+                else:
+                    self.pick_up_workstation.drop_job(self.curr_job)
+                self.curr_job.state = JobState.Moving  # <--------------- Edit Job
+                self.target_pos = self.curr_job.next_workstation.pos
                 self.is_loaded = True
 
             # 载货跑 -> 去送货 -> IDLE
             else:
                 self.state = DeviceState.Idle
-                self.pop_job(self.curr_job)
-                self.target_workstation.push_job(self.curr_job)
+                if self.deliver_workstation == self.parent:
+                    self.parent.drop_job(self.curr_job)
+                else:
+                    self.deliver_workstation.add_job(self.curr_job)
+                self.drop_job(self.curr_job)
                 self.is_loaded = False
 
         else:  # not arrived
@@ -275,7 +288,7 @@ class Robot(Device):
             self.total_distance_travelled += distance_travelled
             self.distance_travelled_pct = min(self.distance_travelled_pct + travel_fraction * 100, 100)  # Cap at 100%
 
-    def push_job(self, job):
+    def add_job(self, job):
         '''
 
         :param job:
@@ -286,13 +299,17 @@ class Robot(Device):
         if self.state != DeviceState.Idle:
             return RTN_ERR
 
+        job.state = JobState.Waiting  # <--------------- Edit Job
+
         self.curr_job = job
         self.state = DeviceState.Busy
         self.curr_busy_time = 0
 
-        self.pick_up_machine = job.curr_machine
+        self.pick_up_workstation = job.curr_workstation
         self.deliver_workstation = job.next_workstation
-        self.target_pos = self.pick_up_machine.pos
+        self.target_pos = self.pick_up_workstation.pos
+
+        self.is_loaded = False
 
         # record
         self.input_job_count[job.type] += 1
@@ -300,19 +317,20 @@ class Robot(Device):
 
         return RTN_OK
 
-    def pop_job(self, job=None):
+    def drop_job(self, job):
+
         self.curr_job = None
         self.state = DeviceState.Idle
         self.curr_busy_time = 0
 
-        self.pick_up_machine = None
+        self.pick_up_workstation = None
         self.deliver_workstation = None
         self.target_pos = (0, 0)
 
         self.is_loaded = False
 
         # record
-        self.output_queue_count[job.type] += 1
+        self.output_job_count[job.type] += 1
         self.total_output_job += 1
 
         return RTN_OK
@@ -320,7 +338,13 @@ class Robot(Device):
     def draw(self, screen):
         font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
 
-        color = COLOR_GREEN if self.state == DeviceState.Busy else COLOR_YELLOW
+        if self.state == DeviceState.Busy:
+            if self.is_loaded:
+                color = COLOR_GREEN
+            else:
+                color = COLOR_WHITE
+        else:
+            color = COLOR_GREEN
         screen_pos = map_to_screen(self.pos)
 
         pygame.draw.circle(screen, color, screen_pos, ROBOT_DIAMETER // 2)
@@ -330,7 +354,10 @@ class Robot(Device):
         screen.blit(robot_mark_text, (screen_pos[0] - 8, screen_pos[1] - 8))
 
         # show percentage
-        percentage_text = font.render(f'{int(self.distance_travelled_pct)}%', True, COLOR_BLACK)
+        percentage_text = f'{int(self.distance_travelled_pct)}%'
+        if self.curr_job:
+            percentage_text += f'[{self.curr_job.name}]'
+        percentage_text = font.render(percentage_text, True, COLOR_BLACK)
         screen.blit(percentage_text, (screen_pos[0] - 15, screen_pos[1] - 35))
 
 
@@ -357,6 +384,7 @@ class Factory(Device):
                              name=f'R{i_robot + 1}',
                              pos=(0, 0))
                        for i_robot in range(self.num_robots)]
+        self.robot_policy = ROBOT_POLICY_NAME
 
         # all jobs
         self.job_times = []
@@ -367,11 +395,22 @@ class Factory(Device):
         self.is_job_alive = []
 
     def set_jobs(self, job_times, jobs):
+        '''
+        添加预先生成的Job列表，并初始化Job内部参数
+        :param job_times:
+        :param jobs:
+        :return:
+        '''
         self.job_times = job_times
         self.jobs = jobs
         for job in self.jobs:
+            job.parent = self
             job.routing_workstation_list = [self.workstations[job.routing_list[i_routine] - 1]
                                             for i_routine in range(len(job.routing_list))]
+            job.state = JobState.Ready  # <--------------- Edit Job
+            job.pos = self.pos
+
+            job.curr_workstation = self
             job.next_workstation = job.routing_workstation_list[0]
 
         self.total_num_jobs = len(self.jobs)
@@ -396,14 +435,27 @@ class Factory(Device):
 
     def run_my_policy(self):
         # TODO
+        # policy default: based on random assigned jobs
         # policy R_1: Robot-oriented, target is to maximize the robot utilization
         # policy M_1: Machine-oriented, target is to maximize the machine/workstation utilization,
         #           or minimize queue delays
         # policy J_1: Job-oriented, target is to minimize the job queueing/waiting time
         #           or maximize job throughput
 
+        # random
+        if self.robot_policy == 'DEFAULT':
+            for robot in self.robots:
+                if robot.state == DeviceState.Idle:
+                    ready_jobs = [self.jobs[i_job]
+                                  for i_job in range(self.total_num_jobs)
+                                  if self.is_job_alive[i_job] is True
+                                  and self.jobs[i_job].state == JobState.Ready]
+                    if len(ready_jobs) > 0:
+                        temp_job = random.choice(ready_jobs)
+                        robot.add_job(temp_job)
+
         # Robot-oriented policy: Maximize robot utilization
-        if POLICY_NAME == 'R1':
+        elif self.robot_policy == 'R1':
             for robot in self.robots:
                 if robot.state == DeviceState.Idle:
                     # Find the closest workstation with jobs in the output queue
@@ -424,18 +476,18 @@ class Factory(Device):
                         print(f"Robot {robot.name} assigned to transport job from {closest_workstation.name}")
 
         # Machine-oriented policy: Maximize machine/workstation utilization
-        elif POLICY_NAME == 'M1':
+        elif self.robot_policy == 'M1':
             for workstation in self.workstations:
                 for machine in workstation.machines:
                     if machine.state == DeviceState.Idle and workstation.input_queue_len > 0:
                         # Assign the next job in the queue to the idle machine
                         next_job = workstation.input_queue.pop(0)
-                        machine.push_job(next_job)
+                        machine.add_job(next_job)
                         print(
                             f"Job {next_job.index} assigned to Machine {machine.name} in Workstation {workstation.name}")
 
         # Job-oriented policy: Minimize job queueing/waiting time
-        elif POLICY_NAME == 'J1':
+        elif self.robot_policy == 'J1':
             # Prioritize jobs that have been in the queue the longest
             for workstation in self.workstations:
                 if workstation.input_queue_len > 0:
@@ -458,22 +510,10 @@ class Factory(Device):
                                 f"Robot {robot.name} transporting job {longest_waiting_job.index} from {longest_queue_workstation.name}")
                             break
 
-        elif POLICY_NAME == 'K1':
-            for robot in self.robots:
-                if robot.state == DeviceState.Idle:
-                    stalled_jobs = [self.jobs[i_job]
-                                    for i_job in range(self.total_num_jobs)
-                                    if self.is_job_alive[i_job] is True
-                                    and self.jobs[i_job].state == JobState.Halted]
-                    if len(stalled_jobs) > 0:
-                        temp_job = random.choice(stalled_jobs)
-                        temp_job.state = DeviceState.Waiting
-                        robot.push_job(temp_job)
-
-        elif POLICY_NAME == 'NA':
+        elif self.robot_policy == 'NA':
             pass
         else:
-            raise ValueError(f'POLICY_NAME {POLICY_NAME} not recognized')
+            raise ValueError(f'POLICY_NAME {self.robot_policy} not recognized')
 
     def update(self):
         self.update_time()
@@ -481,7 +521,7 @@ class Factory(Device):
         # 随机产生新的job
         new_jobs = self.generate_job()
         for job in new_jobs:
-            self.push_job(job)
+            self.add_job(job)
 
         # update all workstations
         for workstation in self.workstations:
@@ -494,8 +534,10 @@ class Factory(Device):
         # Run user-defined policy
         self.run_my_policy()
 
-    def push_job(self, job):
-        job.state = JobState.Halted
+    def add_job(self, job):
+        job.state = JobState.Ready  # <--------------- Edit Job
+        job.start_time = time.time()
+
         self.input_queue.append(job)
         self.input_queue_len = len(self.input_queue)
 
@@ -506,12 +548,16 @@ class Factory(Device):
         self.total_input_job += 1
         return RTN_OK
 
-    def pop_job(self, job=None):
+    def drop_job(self, job):
+
+        job.state = JobState.Perished  # <--------------- Edit Job
+        job.end_time = time.time()  # <--------------- Edit Job
+        job.total_busy_time = job.end_time - job.start_time  # <--------------- Edit Job
 
         self.is_job_alive[job.index] = False
 
         # record
-        self.output_queue_count[job.type] += 1
+        self.output_job_count[job.type] += 1
         self.total_output_job += 1
         return RTN_OK
 
@@ -525,9 +571,10 @@ class Factory(Device):
         show_text_list = [
             (f'{self.name}', COLOR_LIGHT_GREY),
             (f'Time: {int(self.total_run_time / 60)} min {int(self.total_run_time % 60):2d} sec', COLOR_LIGHT_BLUE),
-            (f'Output: {self.total_output_job}', COLOR_LIGHT_BLUE),
-            (f'Output: {self.total_output_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
-            (f'Input: {self.total_input_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
+            (f'Out: {self.total_output_job}', COLOR_LIGHT_BLUE),
+            (f'Out: {self.total_output_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
+            (f'In: {self.total_input_job}', COLOR_LIGHT_BLUE),
+            (f'In: {self.total_input_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
             (f'(In-Out): {self.total_input_job - self.total_output_job}', COLOR_LIGHT_BLUE),
             (f'Queue: {int(self.input_queue_len)}', COLOR_LIGHT_BLUE)
         ]
@@ -542,33 +589,62 @@ class Factory(Device):
         for robot in self.robots:
             robot.draw(screen)
 
+        # Show job status on the side:
+        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
+                                 self.pos[1] + WORLD_HEIGHT))
+        side_text = []
+        for i in range(self.total_num_jobs):
+            if i >= 25:
+                break
+            if self.is_job_alive[i]:
+                temp_text = f'{self.jobs[i].name}|'
+                temp_text += f'idx {self.jobs[i].curr_routing_index}|'
+                temp_text += f'{self.jobs[i].routing_list}|'
+                temp_text += f'{self.jobs[i].state}'[9:]
+                temp_text += f' @ {self.jobs[i].curr_workstation.name}'
+                side_text.append((temp_text, COLOR_LIGHT_BLUE))
+        draw_text_box(screen, side_text, box_pos,
+                      top_center=True, align_center=False, show_box=False,
+                      max_width=420)
 
 # Draw text box function for top center alignment
-def draw_text_box(screen, text_lines, position, top_center=True):
+def draw_text_box(screen, text_lines, position,
+                  top_center=True,
+                  align_center=True,
+                  show_box=True,
+                  max_width=200):
     font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
 
-    max_width = 200
     line_height = 30
     padding = 10
 
     total_height = len(text_lines) * line_height + padding
 
-    # Calculate the top left position to center the text box at the top/bottome center of the Box
+    # Calculate the top left position to center the text box at the top/bottom center of the Box
     if top_center:
         box_x = position[0] - max_width // 2
-        box_y = position[1]  # Align the top of the text box with the position
+        box_y = position[1] + 30  # Align the top of the text box with the position
     else:
         box_x = position[0] - max_width // 2
-        box_y = position[1] - total_height  # Align the bottom of the text box with the position
+        box_y = position[1] - total_height - 40  # Align the bottom of the text box with the position
 
     # Draw the black border around the text box
-    pygame.draw.rect(screen, COLOR_BLACK, (box_x - 5, box_y - 5, max_width + 10, total_height + 10), 2)
+    if show_box:
+        pygame.draw.rect(screen, COLOR_BLACK, (box_x - 5, box_y - 5, max_width + 10, total_height + 10), 2)
 
-    # Draw the text with background colors for each line and center the text
+    # Draw the text with background colors for each line and align it
     for i, (text, bg_color) in enumerate(text_lines):
         line_surface = font.render(text, True, COLOR_BLACK)
         line_rect = pygame.Rect(box_x, box_y + i * line_height, max_width, line_height)
         pygame.draw.rect(screen, bg_color, line_rect)
-        # Center the text inside the line
-        text_rect = line_surface.get_rect(center=(line_rect.centerx, line_rect.centery))
+
+        # Adjust the text alignment
+        if align_center:
+            # Center the text inside the line
+            text_rect = line_surface.get_rect(center=(line_rect.centerx, line_rect.centery))
+        else:
+            # Left-align the text inside the line
+            text_rect = line_surface.get_rect(midleft=(line_rect.left + 10, line_rect.centery))
+
         screen.blit(line_surface, text_rect)
+

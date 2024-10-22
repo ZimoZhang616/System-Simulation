@@ -22,8 +22,10 @@ RTN_ERR = -1
 # M1: Machine-oriented, maximize machine utilization
 # J1: Job-oriented, maximize throughput
 # K1: random assign to stalled jobs
-# POLICY_NAME = 'K1'
-POLICY_NAME = 'NA'
+ROBOT_POLICY_NAME = 'DEFAULT'
+# POLICY_NAME = 'NA'
+
+WORKSTATION_POLICY_NAME = 'DEFAULT'
 
 # Workstation/machine
 NUM_WORKSTATIONS = 5
@@ -55,28 +57,29 @@ JOB_GENERATE_SEED = 42
 MAX_JOB_NUM = 200
 
 # Timing
-BACKEND_CYCLE_TIME = 1e-1       # unit: second
+BACKEND_CYCLE_TIME = 5e-2       # unit: second
 TOTAL_BACKEND_RUN_TIME = 3600     # unit: second
 
-BACKEND_SPEED_RATIO = 100        # speed up ratio (仿真加速比率)
+BACKEND_SPEED_RATIO = 40      # speed up ratio (仿真加速比率)
 
 ''' ------------------------------------------------------------------------------- '''
 ''' GUI/Frontend 前端界面 '''
 ''' ------------------------------------------------------------------------------- '''
 
 # Timing
-FRONTEND_CYCLE_TIME = 5e-2      # unit: second
+FRONTEND_CYCLE_TIME = 2e-2      # unit: second
 
 # Window/screen
-WORLD_WIDTH = 450       # real-world bounds, unit: feet
+WORLD_WIDTH = 600       # real-world bounds, unit: feet
 WORLD_HEIGHT = 600      # real-world bounds, unit: feet
-SCREEN_WIDTH = 800      # window size, unit: pixel
+SCREEN_WIDTH = 1200    # window size, unit: pixel
 SCREEN_HEIGHT = 800     # window size, unit: pixel
 
 # Map real-world coordinates to screen pixels
 def map_to_screen(pos):
-    screen_x = int((pos[0] + WORLD_WIDTH / 2) / WORLD_WIDTH * SCREEN_WIDTH)
-    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) + 100
+    screen_x = int((pos[0] + WORLD_WIDTH / 2) / WORLD_WIDTH * SCREEN_WIDTH * 0.8) - 100
+    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) * 0.6 + 250
+
     return screen_x, screen_y
 
 ROBOT_DIAMETER = 40     # robot size, for display only, unit: pixel
