@@ -344,7 +344,7 @@ class Robot(Device):
             else:
                 color = COLOR_WHITE
         else:
-            color = COLOR_GREEN
+            color = COLOR_YELLOW
         screen_pos = map_to_screen(self.pos)
 
         pygame.draw.circle(screen, color, screen_pos, ROBOT_DIAMETER // 2)
