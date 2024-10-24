@@ -18,14 +18,16 @@ EPS = 1e-6
 ''' Factory/Backend 后端工厂 '''
 ''' ------------------------------------------------------------------------------- '''
 
-# Policy
+# Robot Policy
+# DEFAULT: Robot-oriented, random choose a ready job
 # R1: Robot-oriented, maximize robot utilization
 # M1: Machine-oriented, maximize machine utilization
 # J1: Job-oriented, maximize throughput
 # K1: random assign to stalled jobs
 ROBOT_POLICY_NAME = 'DEFAULT'
-# POLICY_NAME = 'NA'
 
+# Workstation policy
+# DEFAULT: give job to machine in order of increasing index
 WORKSTATION_POLICY_NAME = 'DEFAULT'
 
 # Workstation/machine
@@ -48,13 +50,14 @@ JOB_ROUTING = [
     [2, 5, 1, 4, 3],
 ]
 JOB_TIME_GAMMA = 2
-JOB_MEAN_TIME = [
+JOB_TIME_MEAN = [
     [0.25 * 3600, 0.15 * 3600, 0.10 * 3600, 0.30 * 3600],
     [0.15 * 3600, 0.20 * 3600, 0.30 * 3600],
     [0.15 * 3600, 0.10 * 3600, 0.35 * 3600, 0.20 * 3600, 0.20 * 3600],
 ]
-JOB_PROBABILITY = [0.3, 0.5, 0.2]
+
 JOB_GENERATE_SEED = 42
+JOB_GENERATE_PROBABILITY = [0.3, 0.5, 0.2]
 MAX_JOB_NUM = 300
 
 # Timing
@@ -68,7 +71,7 @@ BACKEND_SPEED_RATIO = 400      # speed up ratio (仿真加速比率)
 ''' ------------------------------------------------------------------------------- '''
 
 # Timing
-FRONTEND_CYCLE_TIME = 2e-2      # unit: second
+FRONTEND_CYCLE_TIME = 5e-2      # unit: second
 
 # Window/screen
 WORLD_WIDTH = 600       # real-world bounds, unit: feet

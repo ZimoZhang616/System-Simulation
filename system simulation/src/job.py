@@ -26,7 +26,7 @@ class Job:
 
         # Calculate the job service time (Sample from the gamma distribution)
         self.service_time_list = [np.random.gamma(shape=JOB_TIME_GAMMA,
-                                                  scale=JOB_MEAN_TIME[self.type][i_routine] / JOB_TIME_GAMMA)
+                                                  scale=JOB_TIME_MEAN[self.type][i_routine] / JOB_TIME_GAMMA)
                                   for i_routine in range(len(self.routing_list))]
 
         self.total_service_time = sum(self.service_time_list)
@@ -82,7 +82,7 @@ def generate_all_jobs(max_job_num, job_arrival_rate, seed=42):
         # Randomly assign a job type based on the given probabilities
         job_type = random.choices(
             population=range(NUM_JOB_TYPES),  # 任务类型的列表
-            weights=JOB_PROBABILITY  # 从job_types中提取生成概率
+            weights=JOB_GENERATE_PROBABILITY  # 从job_types中提取生成概率
         )[0]
         new_job = Job(parent=None, index=i,
                       name=f'J{i+1}', job_type=job_type)

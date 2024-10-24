@@ -26,7 +26,7 @@ class GraphicUserInterface:
         font = pygame.font.SysFont(None, 50)
         status_text = "Paused" if self.paused else f"Running (X{BACKEND_SPEED_RATIO})"
         label = font.render(status_text, True, color)
-        self.screen.blit(label, (SCREEN_WIDTH - 400, SCREEN_HEIGHT - 100))
+        self.screen.blit(label, (SCREEN_WIDTH - 400, SCREEN_HEIGHT - 75))
         pass
 
     def handle_screen_click(self):

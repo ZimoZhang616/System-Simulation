@@ -134,9 +134,9 @@ class Machine(Device):
     def get_show_text(self):
         if self.state == DeviceState.Busy:
             percentage_complete = int((self.curr_busy_time / self.curr_job_time) * 100)
-            return f'{self.name}: [{self.curr_job.name}] | {percentage_complete:2d}%', COLOR_GREEN
+            return f'**{self.name}** : [{self.curr_job.name}] | {percentage_complete:2d}%', COLOR_GREEN
         else:
-            return f'{self.name}: Idle', COLOR_YELLOW
+            return f'**{self.name}** : Idle', COLOR_YELLOW
 
 
 class Workstation(Device):
@@ -209,7 +209,7 @@ class Workstation(Device):
     def draw(self, screen):
 
         # Create text to be showed on screen
-        show_text_list = [(f'{self.name}', COLOR_LIGHT_GREY)]
+        show_text_list = [(f'**{self.name}** ', COLOR_LIGHT_GREY)]
 
         # Add machine info to the text
         for machine in self.machines:
@@ -225,9 +225,9 @@ class Workstation(Device):
         # Draw the text box at the designated position
         box_pos = map_to_screen(self.pos)
         if self.pos[1] > 0:  # For top workstations, bottom center aligned
-            draw_text_box(screen, show_text_list, box_pos, top_center=False)
+            draw_text_box(screen, show_text_list, box_pos, top_center=False, align_center=False)
         else:  # For lower workstations, top center aligned
-            draw_text_box(screen, show_text_list, box_pos, top_center=True)
+            draw_text_box(screen, show_text_list, box_pos, top_center=True, align_center=False)
 
 
 class Robot(Device):
@@ -542,7 +542,7 @@ class Factory(Device):
 
     def add_job(self, job):
         job.state = JobState.Ready  # <--------------- Edit Job
-        job.start_time = time.time()
+        job.start_time = self.total_run_time  # <--------------- Edit Job
 
         self.input_queue.append(job)
         self.input_queue_len = len(self.input_queue)
@@ -557,7 +557,7 @@ class Factory(Device):
     def drop_job(self, job):
 
         job.state = JobState.Perished  # <--------------- Edit Job
-        job.end_time = time.time()  # <--------------- Edit Job
+        job.end_time = self.total_run_time  # <--------------- Edit Job
         job.total_busy_time = job.end_time - job.start_time  # <--------------- Edit Job
 
         self.is_job_alive[job.index] = False
@@ -572,11 +572,13 @@ class Factory(Device):
         pass
 
     def draw(self, screen):
+        ''''''
 
+        '''Factory State'''
         # Create text to be showed on screen
         show_text_list = [
-            (f'{self.name}', COLOR_LIGHT_GREY),
-            (f'Time: {int(self.total_run_time / 60)} min {int(self.total_run_time % 60):2d} sec', COLOR_LIGHT_BLUE),
+            (f'**{self.name}**', COLOR_LIGHT_GREY),
+            (f'Time: {seconds_to_hhmmss(self.total_run_time)}', COLOR_LIGHT_BLUE),
             (f'Out: {self.total_output_job}', COLOR_LIGHT_BLUE),
             (f'Out: {self.total_output_job / self.total_run_time * 3600:.1f} /h', COLOR_LIGHT_BLUE),
             (f'In: {self.total_input_job}', COLOR_LIGHT_BLUE),
@@ -587,7 +589,7 @@ class Factory(Device):
 
         # Draw the text box at the designated position, top center aligned
         box_pos = map_to_screen(self.pos)
-        draw_text_box(screen, show_text_list, box_pos, top_center=True)
+        draw_text_box(screen, show_text_list, box_pos, top_center=True, align_center=False)
 
         for workstation in self.workstations:
             workstation.draw(screen)
@@ -595,15 +597,20 @@ class Factory(Device):
         for robot in self.robots:
             robot.draw(screen)
 
+        '''Job State'''
         # Show job status on the side:
         box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
                                  self.pos[1] + WORLD_HEIGHT))
         side_text = []
         i_plot = 0
         total_alive_job = sum(self.is_job_alive)
+        job_time_mean = np.mean([job.total_busy_time for job in self.jobs if job.total_busy_time is not None])
         side_text.append((f'Total alive jobs: {total_alive_job}', COLOR_LIGHT_GREY))
+        side_text.append((f'> Job Total Time (mean): {job_time_mean:.1f} s', COLOR_LIGHT_GREY))
+
+        MAX_JOB_TO_SHOW = 10
         for i_job in range(self.total_num_jobs):
-            if i_plot >= 20:
+            if i_plot >= MAX_JOB_TO_SHOW:
                 break
             if self.is_job_alive[i_job]:
                 i_plot += 1
@@ -618,44 +625,95 @@ class Factory(Device):
                       top_center=True, align_center=False, show_box=False,
                       max_width=420)
 
+        '''Robot State'''
+        # Show robot status on the side:
+        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
+                                 self.pos[1] + WORLD_HEIGHT - 450))
+        side_text = []
+        i_plot = 0
+        total_busy_robot = sum([robot.state == DeviceState.Idle for robot in self.robots])
+        mean_robot_util = np.mean([robot.time_utilization for robot in self.robots])
+        side_text.append((f'Total Busy Robots: {total_busy_robot}', COLOR_LIGHT_GREY))
+        side_text.append((f'> Robot Time Util (mean): {mean_robot_util * 100:3.0f}%', COLOR_LIGHT_GREY))
+
+        MAX_ROBOT_TO_SHOW = 10
+        for temp_robot in self.robots:
+            if i_plot >= MAX_ROBOT_TO_SHOW:
+                break
+
+            i_plot += 1
+            temp_text = f'{temp_robot.name}|'
+            temp_text += f'Time Util: {temp_robot.time_utilization * 100:3.0f}%|'
+            temp_text += f'In: {temp_robot.total_input_job}|'
+            temp_text += f'Out: {temp_robot.total_output_job}|'
+            temp_text += f'{temp_robot.state}'[12:]
+            side_text.append((temp_text, COLOR_LIGHT_BLUE))
+
+        draw_text_box(screen, side_text, box_pos,
+                      top_center=True, align_center=False, show_box=False,
+                      max_width=420)
+
+def seconds_to_hhmmss(seconds):
+    # Calculate hours, minutes, and seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    # Return in hh:mm:ss format
+    return f'{int(hours):02}:{int(minutes):02}:{int(seconds):02}'
+
 # Draw text box function for top center alignment
 def draw_text_box(screen, text_lines, position,
                   top_center=True,
                   align_center=True,
                   show_box=True,
                   max_width=200):
-    font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
+    # Create fonts only once for efficiency
+    regular_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
+    bold_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, bold=True)
+    italic_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, italic=True)
 
-    line_height = 30
-    padding = 10
-
+    line_height = 28
+    padding = 5
     total_height = len(text_lines) * line_height + padding
 
     # Calculate the top left position to center the text box at the top/bottom center of the Box
-    if top_center:
-        box_x = position[0] - max_width // 2
-        box_y = position[1] + 30  # Align the top of the text box with the position
-    else:
-        box_x = position[0] - max_width // 2
-        box_y = position[1] - total_height - 40  # Align the bottom of the text box with the position
+    box_x = position[0] - max_width // 2
+    box_y = position[1] + 30 if top_center else position[1] - total_height - 40
 
     # Draw the black border around the text box
     if show_box:
         pygame.draw.rect(screen, COLOR_BLACK, (box_x - 5, box_y - 5, max_width + 10, total_height + 10), 2)
 
-    # Draw the text with background colors for each line and align it
+    # Preprocess text and split once per line
     for i, (text, bg_color) in enumerate(text_lines):
-        line_surface = font.render(text, True, COLOR_BLACK)
         line_rect = pygame.Rect(box_x, box_y + i * line_height, max_width, line_height)
         pygame.draw.rect(screen, bg_color, line_rect)
 
-        # Adjust the text alignment
-        if align_center:
-            # Center the text inside the line
-            text_rect = line_surface.get_rect(center=(line_rect.centerx, line_rect.centery))
-        else:
-            # Left-align the text inside the line
-            text_rect = line_surface.get_rect(midleft=(line_rect.left + 10, line_rect.centery))
+        # Split the text into words and process bold/italic tags
+        words = text.split(' ')
+        x_offset = line_rect.left + 10
 
-        screen.blit(line_surface, text_rect)
+        for word in words:
+            # Check for bold/italic tags once, strip them, and select the correct font
+            if word.startswith('**') and word.endswith('**'):
+                word = word[2:-2]
+                word_font = bold_font
+            elif word.startswith('*') and word.endswith('*'):
+                word = word[1:-1]
+                word_font = italic_font
+            else:
+                word_font = regular_font
+
+            # Render the word
+            word_surface = word_font.render(word, True, COLOR_BLACK)
+            word_rect = word_surface.get_rect()
+
+            # Vertically center the word
+            word_rect.topleft = (x_offset, line_rect.centery - word_rect.height // 2)
+
+            # Draw the word on the screen
+            screen.blit(word_surface, word_rect)
+
+            # Update the x_offset for the next word
+            x_offset += word_rect.width + 5
 
