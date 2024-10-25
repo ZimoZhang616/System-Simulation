@@ -42,7 +42,7 @@ class GraphicUserInterface:
             # Handle Pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    self.running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     self.handle_screen_click()  # Handle click anywhere on the screen
 
