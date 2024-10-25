@@ -672,7 +672,7 @@ def draw_text_box(screen, text_lines, position,
     bold_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, bold=True)
     italic_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, italic=True)
 
-    line_height = 28
+    line_height = 26
     padding = 5
     total_height = len(text_lines) * line_height + padding
 
