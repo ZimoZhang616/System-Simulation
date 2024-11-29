@@ -159,7 +159,7 @@ class Workstation(Device):
 
     def my_workstation_policy(self):
         ''' Machine Policy Here '''
-        if self.workstation_policy == 'DEFAULT':
+        if self.workstation_policy == 'FIFO':
             # update machine states
             for machine in self.machines:
                 if machine.state == DeviceState.Idle and self.input_queue_len > 0:
@@ -167,6 +167,55 @@ class Workstation(Device):
                     self.input_queue_len = len(self.input_queue)
                     machine.add_job(temp_job)
                 machine.update()
+        elif self.workstation_policy == 'RANDOM':
+            # update machine states
+            for machine in self.machines:
+                if machine.state == DeviceState.Idle and self.input_queue_len > 0:
+                    temp_job = random.choice(self.input_queue)
+                    self.input_queue.remove(temp_job)
+                    self.input_queue_len = len(self.input_queue)
+                    machine.add_job(temp_job)
+                machine.update()
+        elif self.workstation_policy == 'NEH':
+            # NEH policy, find the total processing time of each job (the sum of processing times across all machines).
+            for machine in self.machines:
+                if machine.state == DeviceState.Idle and self.input_queue_len > 0:
+                    self.NEH_ws_policy()
+                    self.input_queue_len = len(self.input_queue)
+                    #machine.add_job(temp_job)
+                machine.update()
+
+    def NEH_ws_policy(self):
+        """
+        NEH policy for job assignment to machines. This policy sorts jobs by total processing time and assigns
+        them in a way that minimizes makespan (completion time).
+        """
+        # Step 1: Calculate total processing time for each job
+        job_total_times = []
+        for job in self.input_queue:
+            #total_time = sum(job.service_time_list)  # Sum of processing times across all machines
+            job_total_times.append((job, job.total_process_time))
+
+        # Step 2: Sort jobs in descending order by total processing time
+        job_total_times.sort(key=lambda x: x[1], reverse=True)  # Sort by total time (descending)
+
+        # Step 3: Assign jobs to machines
+        for job, _ in job_total_times:
+            # Find an idle machine and assign the job
+            assigned = False  # Flag to track if the job was assigned
+
+            for machine in self.machines:
+                if machine.state == DeviceState.Idle:
+                    # Add the job to the machine
+                    self.input_queue.remove(job)  # Remove job from queue
+                    machine.add_job(job)  # Assign job to the machine
+                    assigned = True  # Mark job as assigned
+                    break  # Exit the machine loop once job is assigned
+
+            if not assigned:
+                # If no idle machine was found for this job, it remains in the queue.
+                break  # Exit the loop if no machines are available for further job assignment
+
 
     def update(self):
         self.update_time()
@@ -366,7 +415,7 @@ class Factory(Device):
     One Factory is composed of several workstations, several robots, and the input/output ports
     """
 
-    def __init__(self, parent=None, index=0, name='', pos=(0, 0)):
+    def __init__(self, parent=None, index=0, name='', pos=FACTORY_POS):
         super().__init__(parent, index, name, pos)
 
         # init all workstations
@@ -436,13 +485,29 @@ class Factory(Device):
 
         return new_job_list
 
+    def NEH_robot_policy(self, job_list):
+        """
+        NEH policy for job assignment to machines. This policy sorts jobs by total processing time and assigns
+        them in a way that minimizes makespan (completion time).
+        """
+        # Step 1: Calculate total processing time for each job
+        job_total_times = []
+        for job in job_list:
+            job_total_times.append((job, job.total_process_time))
+
+        # Step 2: Sort jobs in descending order by total processing time
+        job_total_times.sort(key=lambda x: x[1], reverse=True)  # Sort by total time (descending)
+
+        return job_total_times[0][0]
+    
+
     def run_my_policy(self):
         # TODO
         # policy default: based on random assigned jobs
         # policy R_1: Robot-oriented, target is to maximize the robot utilization
         # policy M_1: Machine-oriented, target is to maximize the machine/workstation utilization,
         #           or minimize queue delays
-        # policy J_1: Job-oriented, target is to minimize the job queueing/waiting time
+        # policy J_1: Job-oriented, target is to minimize the job queueing/waiting time 
         #           or maximize job throughput
 
         # random
@@ -456,65 +521,78 @@ class Factory(Device):
                     if len(ready_jobs) > 0:
                         temp_job = random.choice(ready_jobs)
                         robot.add_job(temp_job)
-
         # Robot-oriented policy: Maximize robot utilization
-        elif self.robot_policy == 'R1':
+        elif self.robot_policy == 'DISTANCE' or self.robot_policy == 'DISTANCE_NEH':
             for robot in self.robots:
                 if robot.state == DeviceState.Idle:
                     # Find the closest workstation with jobs in the output queue
                     closest_workstation = None
                     min_distance = float('inf')
                     for workstation in self.workstations:
-                        if workstation.output_queue_len > 0:
+                        if workstation.output_queue_len > 0 and \
+                            any(tmp_job.state == JobState.Ready for tmp_job in workstation.output_queue):
                             # Calculate distance between robot and workstation
                             dx, dy, distance = calculate_distance(robot.pos, workstation.pos)
                             if distance < min_distance:
                                 min_distance = distance
                                 closest_workstation = workstation
-
+                    if (self.input_queue_len > 0 and \
+                            any(tmp_job.state == JobState.Ready for tmp_job in self.input_queue)):
+                        dx, dy, distance = calculate_distance(robot.pos, self.pos)
+                        if distance < min_distance:
+                            min_distance = distance
+                            closest_workstation = self
+                    #print(closest_workstation.index)
                     # If a workstation with jobs is found, move the robot to pick up the job
                     if closest_workstation:
-                        robot.target_workstation = closest_workstation
-                        robot.state = DeviceState.Busy
-                        print(f"Robot {robot.name} assigned to transport job from {closest_workstation.name}")
+                        if closest_workstation != self:
+                            tmp_queue = closest_workstation.output_queue
+                            #choosable_jobs = [tmp_job for tmp_job in tmp_queue if tmp_job.state == JobState.Ready]
+                        else:
+                            tmp_queue = self.input_queue
+                        choosable_jobs = [tmp_job for tmp_job in tmp_queue if tmp_job.state == JobState.Ready]
+                        if self.robot_policy == 'DISTANCE_NEH':
+                            temp_job = self.NEH_robot_policy(choosable_jobs)
+                        else:
+                            temp_job = random.choice(choosable_jobs)
+                        robot.add_job(temp_job)
+        # # Machine-oriented policy: Maximize machine/workstation utilization
+        # elif self.robot_policy == 'M1':
+        #     for workstation in self.workstations:
+        #         for machine in workstation.machines:
+        #             if machine.state == DeviceState.Idle and workstation.input_queue_len > 0:
+        #                 # Assign the next job in the queue to the idle machine
+        #                 next_job = workstation.input_queue.pop(0)
+        #                 machine.add_job(next_job)
+        #                 print(
+        #                     f"Job {next_job.index} assigned to Machine {machine.name} in Workstation {workstation.name}")
 
-        # Machine-oriented policy: Maximize machine/workstation utilization
-        elif self.robot_policy == 'M1':
-            for workstation in self.workstations:
-                for machine in workstation.machines:
-                    if machine.state == DeviceState.Idle and workstation.input_queue_len > 0:
-                        # Assign the next job in the queue to the idle machine
-                        next_job = workstation.input_queue.pop(0)
-                        machine.add_job(next_job)
-                        print(
-                            f"Job {next_job.index} assigned to Machine {machine.name} in Workstation {workstation.name}")
+        # # Job-oriented policy: Minimize job queueing/waiting time
+        # elif self.robot_policy == 'J1':
+        #     # Prioritize jobs that have been in the queue the longest
+        #     for workstation in self.workstations:
+        #         if workstation.input_queue_len > 0:
+        #             # Assign jobs from workstations with the longest queue to available robots
+        #             longest_waiting_job = None
+        #             longest_queue_workstation = None
+        #             max_queue_len = 0
+        #             for ws in self.workstations:
+        #                 if ws.input_queue_len > max_queue_len:
+        #                     max_queue_len = ws.input_queue_len
+        #                     longest_waiting_job = ws.input_queue[0]
+        #                     longest_queue_workstation = ws
 
-        # Job-oriented policy: Minimize job queueing/waiting time
-        elif self.robot_policy == 'J1':
-            # Prioritize jobs that have been in the queue the longest
-            for workstation in self.workstations:
-                if workstation.input_queue_len > 0:
-                    # Assign jobs from workstations with the longest queue to available robots
-                    longest_waiting_job = None
-                    longest_queue_workstation = None
-                    max_queue_len = 0
-                    for ws in self.workstations:
-                        if ws.input_queue_len > max_queue_len:
-                            max_queue_len = ws.input_queue_len
-                            longest_waiting_job = ws.input_queue[0]
-                            longest_queue_workstation = ws
+        #             # Find an idle robot to transport the job
+        #             for robot in self.robots:
+        #                 if robot.state == DeviceState.Idle:
+        #                     robot.target_workstation = longest_queue_workstation
+        #                     robot.state = DeviceState.Busy
+        #                     print(
+        #                         f"Robot {robot.name} transporting job {longest_waiting_job.index} from {longest_queue_workstation.name}")
+        #                     break
 
-                    # Find an idle robot to transport the job
-                    for robot in self.robots:
-                        if robot.state == DeviceState.Idle:
-                            robot.target_workstation = longest_queue_workstation
-                            robot.state = DeviceState.Busy
-                            print(
-                                f"Robot {robot.name} transporting job {longest_waiting_job.index} from {longest_queue_workstation.name}")
-                            break
-
-        elif self.robot_policy == 'NA':
-            pass
+        # elif self.robot_policy == 'NA':
+        #     pass
         else:
             raise ValueError(f'POLICY_NAME {self.robot_policy} not recognized')
 

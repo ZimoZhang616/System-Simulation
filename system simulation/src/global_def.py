@@ -23,20 +23,24 @@ EPS = 1e-6
 # R1: Robot-oriented, maximize robot utilization
 # M1: Machine-oriented, maximize machine utilization
 # J1: Job-oriented, maximize throughput
-# K1: random assign to stalled jobs
-ROBOT_POLICY_NAME = 'DEFAULT'
+# K1: random assign to stalled jobs#
+#ROBOT_POLICY_NAME = 'DEFAULT' # random
+#ROBOT_POLICY_NAME = 'DISTANCE'# the robot will search for the nearest workstation and get a random job from its output
+ROBOT_POLICY_NAME = 'DISTANCE_NEH'
 
 # Workstation policy
 # DEFAULT: give job to machine in order of increasing index
-WORKSTATION_POLICY_NAME = 'DEFAULT'
+#WORKSTATION_POLICY_NAME = 'RANDOM'
+#WORKSTATION_POLICY_NAME = 'FIFO' # FIFO
+WORKSTATION_POLICY_NAME = 'NEH'
 
 # Workstation/machine
 NUM_WORKSTATIONS = 5
-NUM_MACHINES_WORKSTATION = [3, 3, 5, 4, 2]
+NUM_MACHINES_WORKSTATION = [4, 4, 5, 4, 4]
 WORKSTATION_POS = [(-150, 0), (-150, 150), (0, 150), (150, 150), (150, 0)]  # unit: feet
-
+FACTORY_POS = (0,0)
 # Robot
-NUM_ROBOTS = 8
+NUM_ROBOTS = 5
 ROBOT_SPEED = 5     # unit: feet per second
 
 # Job
@@ -62,7 +66,7 @@ MAX_JOB_NUM = 300
 
 # Timing
 BACKEND_CYCLE_TIME = 5e-1       # unit: second
-TOTAL_BACKEND_RUN_TIME = 3600*5     # unit: second
+TOTAL_BACKEND_RUN_TIME = 3600*10     # unit: second
 
 BACKEND_SPEED_RATIO = 400      # speed up ratio (仿真加速比率)
 

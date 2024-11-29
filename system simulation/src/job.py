@@ -31,6 +31,9 @@ class Job:
 
         self.total_service_time = sum(self.service_time_list)
 
+        self.total_transport_time = self.cal_total_transport() / ROBOT_SPEED
+
+        self.total_process_time = self.total_transport_time + self.total_service_time
         # Current state
         self.state = JobState.NotExist
         self.pos = (0, 0)
@@ -42,6 +45,27 @@ class Job:
         self.start_time = None
         self.end_time = None
         self.total_busy_time = None
+
+    def cal_total_transport(self):
+        total_dis = 0
+        for i in range(len(self.routing_list) + 1):
+            if i == 0:
+                total_dis += self.calculate_distance(FACTORY_POS, WORKSTATION_POS[self.routing_list[i]-1])[2]
+                continue
+            elif i == len(self.routing_list):
+                total_dis += self.calculate_distance(FACTORY_POS, WORKSTATION_POS[self.routing_list[i-1]-1])[2]
+                continue
+            total_dis += self.calculate_distance(WORKSTATION_POS[self.routing_list[i-1]-1], WORKSTATION_POS[self.routing_list[i]-1])[2]
+
+        return total_dis
+
+
+    def calculate_distance(self, pos_start, pos_end):
+        """Calculate Euclidean distance between two points (x1, y1) and (x2, y2)."""
+        return (pos_end[0] - pos_start[0],
+                pos_end[1] - pos_start[1],
+                ((pos_end[0] - pos_start[0]) ** 2 + (pos_end[1] - pos_start[1]) ** 2) ** 0.5)
+
 
     def next_routing(self):
         '''
