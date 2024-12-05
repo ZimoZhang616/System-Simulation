@@ -156,6 +156,68 @@ class Workstation(Device):
                          for i_machine in range(self.num_machines)]
 
         self.workstation_policy = WORKSTATION_POLICY_NAME
+        self.q_table = {}
+
+    def get_current_state(self):
+        """获取当前队列状态"""
+        return (
+            len(self.input_queue),  # 队列长度
+            tuple(bottle.remaining_steps for bottle in self.input_queue),  # 每个瓶子的剩余步骤
+            tuple(bottle.service_time_list[bottle.curr_routing_index] for bottle in self.input_queue)  # 当前步骤的处理时间
+        )
+
+    def get_possible_actions(self):
+        """生成所有可能的动作"""
+        actions = []
+        for i in range(len(self.input_queue)):
+            for j in range(i + 1, len(self.input_queue)):
+                actions.append((i, j))  # 交换队列中第 i 和第 j 个瓶子
+        return actions
+
+    def adjust_queue(self, action):
+        """根据动作调整队列"""
+        i, j = action
+        self.input_queue[i], self.input_queue[j] = self.input_queue[j], self.input_queue[i]
+
+    def compute_reward(self, current_queue, new_queue):
+        """计算队列调整后的奖励"""
+        current_waiting_time = sum(bottle.total_process_time for bottle in current_queue)
+        new_waiting_time = sum(bottle.total_process_time for bottle in new_queue)
+        return current_waiting_time - new_waiting_time  # 奖励为等待时间减少量
+
+    def update_q_table(self, state, action, reward, next_state):
+        """更新 Q 表"""
+        best_next_action = max(
+            self.get_possible_actions(),
+            key=lambda a: self.q_table.get((next_state, a), 0.0),
+            default=None
+        )
+        # 更新 Q 值
+        self.q_table[(state, action)] += ALPHA * (
+                reward + GAMMA * self.q_table.get((next_state, best_next_action), 0.0) - self.q_table.get(
+            (state, action), 0.0)
+        )
+
+        # 调试信息：打印更新的 Q 值
+        print(f"Updated Q[{state}, {action}] = {self.q_table[(state, action)]:.2f}")
+
+    def select_action(self, state):
+        """基于 epsilon-greedy 策略选择动作"""
+        possible_actions = self.get_possible_actions()
+        if not possible_actions:
+            return None
+        if np.random.rand() < EPSILON:  # 探索
+            return random.choice(possible_actions)
+        else:  # 利用
+            return max(possible_actions, key=lambda a: self.q_table.get((state, a), 0.0))
+
+    def initialize_q_table(self):
+        """为工作站初始化 Q 表"""
+        for i in range(len(self.input_queue)):
+            for j in range(i + 1, len(self.input_queue)):
+                state = self.get_current_state()
+                action = (i, j)  # 交换两个瓶子的动作
+                self.q_table[(state, action)] = 0.0  # 初始化 Q 值为 0
 
     def my_workstation_policy(self):
         ''' Machine Policy Here '''
@@ -184,6 +246,20 @@ class Workstation(Device):
                     self.input_queue_len = len(self.input_queue)
                     #machine.add_job(temp_job)
                 machine.update()
+        elif self.robot_policy == 'Q_LEARNING_QUEUE':
+            for ws in self.workstations:
+                state = ws.get_current_state()  # 获取当前状态
+                action = ws.select_action(state)  # 选择动作
+                if action is None:
+                    continue  # 如果没有动作可执行，跳过
+
+                # 执行动作调整队列
+                ws.adjust_queue(action)
+
+                # 计算奖励并更新 Q 表
+                next_state = ws.get_current_state()
+                reward = ws.compute_reward(ws.input_queue, ws.input_queue)  # 比较调整前后队列的奖励
+                ws.update_q_table(state, action, reward, next_state)
 
     def NEH_ws_policy(self):
         """
@@ -232,6 +308,10 @@ class Workstation(Device):
         # timing
         # use mean time of utilization of all machines
         self.time_utilization = np.mean([machine.time_utilization for machine in self.machines])
+
+        # 在 device.py 文件的 Workstation 类的 update() 方法末尾加入
+        with open('queue_log_40_R_random_W_random_646444.csv', 'a') as f:
+            f.write(f"{self.total_run_time},{self.index},{self.input_queue_len}\n")
 
     def add_job(self, job):
 
@@ -374,7 +454,7 @@ class Robot(Device):
 
         self.pick_up_workstation = None
         self.deliver_workstation = None
-        self.target_pos = (0, 0)
+        self.target_pos = (-300, 0)
 
         self.is_loaded = False
 
@@ -431,7 +511,7 @@ class Factory(Device):
         self.robots = [Robot(parent=self,
                              index=i_robot,
                              name=f'R{i_robot + 1}',
-                             pos=(0, 0))
+                             pos=(-300, 0))
                        for i_robot in range(self.num_robots)]
         self.robot_policy = ROBOT_POLICY_NAME
 
@@ -460,7 +540,8 @@ class Factory(Device):
             job.routing_workstation_list = [self.workstations[job.routing_list[i_routine] - 1]
                                             for i_routine in range(len(job.routing_list))]
             job.state = JobState.Ready  # <--------------- Edit Job
-            job.pos = self.pos
+            #job.pos = self.pos
+            job.pos = (-300, 0)  # Job 生成在 (-300, 0)
 
             job.curr_workstation = self
             job.next_workstation = job.routing_workstation_list[0]
@@ -556,6 +637,29 @@ class Factory(Device):
                         else:
                             temp_job = random.choice(choosable_jobs)
                         robot.add_job(temp_job)
+
+        elif self.robot_policy == 'Q_LEARNING_QUEUE':
+            for ws in self.workstations:
+                state = ws.get_current_state()  # 获取当前状态
+                action = ws.select_action(state)  # 选择动作
+                if action is None:
+                    continue  # 如果没有动作可执行，跳过
+
+                # 打印调整前的队列状态
+                print(f"Queue before adjustment: {state}")
+
+                # 执行动作调整队列
+                ws.adjust_queue(action)
+
+                # 打印调整后的队列状态
+                next_state = ws.get_current_state()
+                print(f"Queue after adjustment: {next_state}")
+
+                # 计算奖励并更新 Q 表
+                reward = ws.compute_reward(ws.input_queue, ws.input_queue)  # 比较调整前后队列的奖励
+                print(f"Reward: {reward}")  # 打印奖励信息
+                ws.update_q_table(state, action, reward, next_state)
+
         # # Machine-oriented policy: Maximize machine/workstation utilization
         # elif self.robot_policy == 'M1':
         #     for workstation in self.workstations:
@@ -666,7 +770,8 @@ class Factory(Device):
         ]
 
         # Draw the text box at the designated position, top center aligned
-        box_pos = map_to_screen(self.pos)
+        #box_pos = map_to_screen(self.pos)
+        box_pos = map_to_screen((self.pos[0], self.pos[1]))  # 向zuo 300，向上0
         draw_text_box(screen, show_text_list, box_pos, top_center=True, align_center=False)
 
         for workstation in self.workstations:
@@ -677,7 +782,7 @@ class Factory(Device):
 
         '''Job State'''
         # Show job status on the side:
-        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
+        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 370,
                                  self.pos[1] + WORLD_HEIGHT))
         side_text = []
         i_plot = 0
@@ -705,7 +810,7 @@ class Factory(Device):
 
         '''Robot State'''
         # Show robot status on the side:
-        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 70,
+        box_pos = map_to_screen((self.pos[0] + WORLD_WIDTH * 0.5 + 370,
                                  self.pos[1] + WORLD_HEIGHT - 450))
         side_text = []
         i_plot = 0

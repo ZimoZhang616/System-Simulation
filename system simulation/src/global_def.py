@@ -24,40 +24,40 @@ EPS = 1e-6
 # M1: Machine-oriented, maximize machine utilization
 # J1: Job-oriented, maximize throughput
 # K1: random assign to stalled jobs#
-#ROBOT_POLICY_NAME = 'DEFAULT' # random
+ROBOT_POLICY_NAME = 'DEFAULT' # random
 #ROBOT_POLICY_NAME = 'DISTANCE'# the robot will search for the nearest workstation and get a random job from its output
-ROBOT_POLICY_NAME = 'DISTANCE_NEH'
+#ROBOT_POLICY_NAME = 'DISTANCE_NEH'
 
 # Workstation policy
 # DEFAULT: give job to machine in order of increasing index
-#WORKSTATION_POLICY_NAME = 'RANDOM'
+WORKSTATION_POLICY_NAME = 'RANDOM'
 #WORKSTATION_POLICY_NAME = 'FIFO' # FIFO
-WORKSTATION_POLICY_NAME = 'NEH'
+#WORKSTATION_POLICY_NAME = 'NEH'
 
 # Workstation/machine
-NUM_WORKSTATIONS = 5
-NUM_MACHINES_WORKSTATION = [4, 4, 5, 4, 4]
-WORKSTATION_POS = [(-150, 0), (-150, 150), (0, 150), (150, 150), (150, 0)]  # unit: feet
-FACTORY_POS = (0,0)
+NUM_WORKSTATIONS = 6
+NUM_MACHINES_WORKSTATION = [6, 4, 6, 4, 4, 4]
+WORKSTATION_POS = [(-150, 0), (-150, 150), (0, 150), (150, 150), (150, 0), (0, 0)]  # unit: feet
+FACTORY_POS = (-300,0)
 # Robot
 NUM_ROBOTS = 5
 ROBOT_SPEED = 5     # unit: feet per second
 
 # Job
-JOB_ARRIVAL_RATE = 25 / 3600    # number of arrival jobs per second
+JOB_ARRIVAL_RATE = 40 / 3600    # number of arrival jobs per second
 JOB_OUTPUT_RATE = 120 / (8 * 3600)  # number of job output target per second
 
 NUM_JOB_TYPES = 3
 JOB_ROUTING = [
-    [3, 1, 2, 5],
+    [3, 1, 6, 2, 5],
     [4, 1, 3],
-    [2, 5, 1, 4, 3],
+    [6, 2, 5, 1, 4, 3],
 ]
 JOB_TIME_GAMMA = 2
 JOB_TIME_MEAN = [
-    [0.25 * 3600, 0.15 * 3600, 0.10 * 3600, 0.30 * 3600],
+    [0.25 * 3600, 0.15 * 3600, 0.20 * 3600, 0.10 * 3600, 0.30 * 3600],
     [0.15 * 3600, 0.20 * 3600, 0.30 * 3600],
-    [0.15 * 3600, 0.10 * 3600, 0.35 * 3600, 0.20 * 3600, 0.20 * 3600],
+    [0.25 * 3600, 0.15 * 3600, 0.10 * 3600, 0.35 * 3600, 0.20 * 3600, 0.20 * 3600],
 ]
 
 JOB_GENERATE_SEED = 42
@@ -78,20 +78,20 @@ BACKEND_SPEED_RATIO = 400      # speed up ratio (仿真加速比率)
 FRONTEND_CYCLE_TIME = 5e-2      # unit: second
 
 # Window/screen
-WORLD_WIDTH = 600       # real-world bounds, unit: feet
-WORLD_HEIGHT = 600      # real-world bounds, unit: feet
-SCREEN_WIDTH = 1200    # window size, unit: pixel
-SCREEN_HEIGHT = 800     # window size, unit: pixel
+WORLD_WIDTH = 900       # real-world bounds, unit: feet
+WORLD_HEIGHT = 900      # real-world bounds, unit: feet
+SCREEN_WIDTH = 1600    # window size, unit: pixel
+SCREEN_HEIGHT = 1000     # window size, unit: pixel
 
 # Map real-world coordinates to screen pixels
 def map_to_screen(pos):
     screen_x = int((pos[0] + WORLD_WIDTH / 2) / WORLD_WIDTH * SCREEN_WIDTH * 0.8) - 100
-    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) * 0.6 + 250
+    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) * 0.6 + 270
 
     return screen_x, screen_y
 
 ROBOT_DIAMETER = 40     # robot size, for display only, unit: pixel
-STATION_WIDTH = 200     # station width, for display only, unit: pixel
+STATION_WIDTH = 40     # station width, for display only, unit: pixel
 
 # Colors
 COLOR_WHITE = (255, 255, 255)
