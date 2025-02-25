@@ -16,7 +16,7 @@ class DeviceState(enum.Enum):
 
 
 class Device:
-    def __init__(self, parent=None, index=0, name='', pos=(0, 0)):
+    def __init__(self, parent=None, index=0, name='', pos=FACTORY_POS):
         self.parent = parent  # parent node
         self.index = index  # index
         self.name = name  # device name
@@ -360,7 +360,7 @@ class Workstation(Device):
 
 
 class Robot(Device):
-    def __init__(self, parent=None, index=0, name='', pos=(0, 0)):
+    def __init__(self, parent=None, index=0, name='', pos=(-200,75)):
         super().__init__(parent, index, name, pos)
 
         self.speed = ROBOT_SPEED
@@ -368,7 +368,7 @@ class Robot(Device):
         self.curr_job = None
         self.pick_up_workstation = None  # 收货位置
         self.deliver_workstation = None  # 送货位置
-        self.target_pos = (0, 0)  # 当前目标
+        self.target_pos = FACTORY_POS  # 当前目标
 
         self.distance_travelled_pct = 0
         self.total_distance_travelled = 0
@@ -454,7 +454,7 @@ class Robot(Device):
 
         self.pick_up_workstation = None
         self.deliver_workstation = None
-        self.target_pos = (-300, 0)
+        self.target_pos = FACTORY_POS
 
         self.is_loaded = False
 
@@ -511,7 +511,7 @@ class Factory(Device):
         self.robots = [Robot(parent=self,
                              index=i_robot,
                              name=f'R{i_robot + 1}',
-                             pos=(-300, 0))
+                             pos=FACTORY_POS)
                        for i_robot in range(self.num_robots)]
         self.robot_policy = ROBOT_POLICY_NAME
 
@@ -771,9 +771,14 @@ class Factory(Device):
 
         # Draw the text box at the designated position, top center aligned
         #box_pos = map_to_screen(self.pos)
-        box_pos = map_to_screen((self.pos[0], self.pos[1]))  # 向zuo 300，向上0
-        draw_text_box(screen, show_text_list, box_pos, top_center=True, align_center=False)
-
+        # 如果是 Entry 工厂，使用专门的绘制大框方法
+        if self.name == 'Entry':
+            box_pos = map_to_screen((self.pos[0]-100, self.pos[1]+500))
+            self.draw_entry_box(screen, show_text_list, box_pos, max_width=200, max_height=600)
+        else:
+            # 对于其他工厂，使用通用的绘制方法
+            box_pos = map_to_screen((self.pos[0], self.pos[1]))
+            draw_text_box(screen, show_text_list, box_pos, top_center=True, align_center=False, max_width=300)  # 默认大小
         for workstation in self.workstations:
             workstation.draw(screen)
 
@@ -836,6 +841,43 @@ class Factory(Device):
                       top_center=True, align_center=False, show_box=False,
                       max_width=420)
 
+    def draw_entry_box(self, screen, show_text_list, position, max_width=400, max_height=600):
+        """
+        为 'Entry' 工厂画一个专门的大框
+        """
+        line_height = 70  # 行高
+        padding = 5
+        total_height = len(show_text_list) * line_height + padding  # 计算总高度
+        regular_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
+        bold_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, bold=True)
+        italic_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, italic=True)
+        # 如果设置了最大高度，并且总高度超过了最大高度，则设置为最大高度
+        if total_height > max_height:
+            total_height = max_height
+
+        box_x = position[0] - max_width // 2
+        box_y = position[1] + 30  # Adjust position for better visibility
+
+        # 绘制大框和边框
+        pygame.draw.rect(screen, COLOR_BLACK, (box_x - 5, box_y - 5, max_width + 10, total_height + 10), 2)
+
+        # 绘制文本内容
+        for i, (text, bg_color) in enumerate(show_text_list):
+            line_rect = pygame.Rect(box_x, box_y + i * line_height, max_width, line_height)
+            pygame.draw.rect(screen, bg_color, line_rect)
+
+            words = text.split(' ')
+            x_offset = line_rect.left + 10
+
+            for word in words:
+                word_font = regular_font
+                word_surface = word_font.render(word, True, COLOR_BLACK)
+                word_rect = word_surface.get_rect()
+                word_rect.topleft = (x_offset, line_rect.centery - word_rect.height // 2)
+                screen.blit(word_surface, word_rect)
+                x_offset += word_rect.width + 5
+
+
 def seconds_to_hhmmss(seconds):
     # Calculate hours, minutes, and seconds
     hours = seconds // 3600
@@ -849,7 +891,7 @@ def draw_text_box(screen, text_lines, position,
                   top_center=True,
                   align_center=True,
                   show_box=True,
-                  max_width=200):
+                  max_width=200, max_height = None):
     # Create fonts only once for efficiency
     regular_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE)
     bold_font = pygame.font.SysFont(FONT_FAMILY, FONT_SIZE, bold=True)
@@ -858,6 +900,14 @@ def draw_text_box(screen, text_lines, position,
     line_height = 26
     padding = 5
     total_height = len(text_lines) * line_height + padding
+    # 如果设置了最大高度，并且总高度超过了最大高度，则设置为最大高度
+    if max_height and total_height > max_height:
+        total_height = max_height
+
+        # 将文本裁剪为适应框高的内容
+        max_lines = max_height // line_height
+        text_lines = text_lines[:max_lines]  # 只保留显示框内的行
+
 
     # Calculate the top left position to center the text box at the top/bottom center of the Box
     box_x = position[0] - max_width // 2

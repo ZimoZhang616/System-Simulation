@@ -37,8 +37,8 @@ WORKSTATION_POLICY_NAME = 'RANDOM'
 # Workstation/machine
 NUM_WORKSTATIONS = 6
 NUM_MACHINES_WORKSTATION = [6, 4, 6, 4, 4, 4]
-WORKSTATION_POS = [(-150, 0), (-150, 150), (0, 150), (150, 150), (150, 0), (0, 0)]  # unit: feet
-FACTORY_POS = (-300,0)
+WORKSTATION_POS = [(-50, 0), (-50, 150), (100, 150), (250, 150), (250, 0), (100, 0)]  # unit: feet
+FACTORY_POS = (-200,75)
 # Robot
 NUM_ROBOTS = 5
 ROBOT_SPEED = 5     # unit: feet per second
@@ -85,8 +85,8 @@ SCREEN_HEIGHT = 1000     # window size, unit: pixel
 
 # Map real-world coordinates to screen pixels
 def map_to_screen(pos):
-    screen_x = int((pos[0] + WORLD_WIDTH / 2) / WORLD_WIDTH * SCREEN_WIDTH * 0.8) - 100
-    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) * 0.6 + 270
+    screen_x = int((pos[0] + WORLD_WIDTH / 2) / WORLD_WIDTH * SCREEN_WIDTH * 0.8) - 50
+    screen_y = int((WORLD_HEIGHT/2 - pos[1]) / WORLD_HEIGHT * SCREEN_HEIGHT) * 0.6 + 320
 
     return screen_x, screen_y
 
